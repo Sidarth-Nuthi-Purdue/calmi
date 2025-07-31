@@ -15,8 +15,17 @@ from typing import Dict, List, Optional
 import argparse
 import sys
 
+# Add OpenAI client
+try:
+    from openai import OpenAI
+except ImportError:
+    print("⚠️ OpenAI library not found. Installing...")
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "openai"])
+    from openai import OpenAI
+
 class AIPodcastGenerator:
-    def __init__(self, elevenlabs_api_key: str, playht_api_key: str = None, playht_user_id: str = None):
+    def __init__(self, elevenlabs_api_key: str, playht_api_key: str = None, playht_user_id: str = None, openai_api_key: str = None):
         """
         Initialize the AI Podcast Generator with API keys.
         
@@ -24,10 +33,17 @@ class AIPodcastGenerator:
             elevenlabs_api_key: ElevenLabs API key for text-to-speech
             playht_api_key: Play.ht API key (optional, for future use)
             playht_user_id: Play.ht user ID (optional, for future use)
+            openai_api_key: OpenAI API key for script generation
         """
         self.elevenlabs_api_key = elevenlabs_api_key
         self.playht_api_key = playht_api_key
         self.playht_user_id = playht_user_id
+        
+        # Initialize OpenAI client
+        self.openai_client = None
+        if openai_api_key:
+            self.openai_client = OpenAI(api_key=openai_api_key)
+            print("✅ OpenAI client initialized")
         
         # ElevenLabs API endpoints
         self.elevenlabs_base_url = "https://api.elevenlabs.io/v1"
@@ -63,7 +79,7 @@ class AIPodcastGenerator:
     
     def analyze_conversation(self, transcript: str) -> Dict:
         """
-        Analyze the conversation transcript using AI to extract deep insights.
+        Analyze the conversation transcript using OpenAI to extract deep insights.
         
         Args:
             transcript: The conversation transcript text
@@ -71,110 +87,63 @@ class AIPodcastGenerator:
         Returns:
             Dictionary containing analysis results
         """
-        try:
-            # Use AI analysis for deeper insights
-            analysis_prompt = f"""
-            Analyze this personal conversation transcript and provide therapeutic insights.
-            
-            Transcript:
-            {transcript}
-            
-            Please provide a JSON response with these fields:
-            - "core_themes": List of 2-3 main psychological/emotional themes
-            - "emotional_patterns": Key emotional patterns you notice
-            - "therapeutic_insights": 3-4 specific therapeutic observations
-            - "philosophical_angles": 2-3 deeper life questions or philosophical themes
-            - "reframing_opportunities": Specific ways to reframe challenges positively
-            - "growth_indicators": Signs of resilience, self-awareness, or growth
-            - "support_suggestions": Practical support or coping strategies
-            
-            Focus on being compassionate, insightful, and therapeutically informed.
-            """
-            
-            # For now, use a sophisticated keyword-based approach with deeper analysis
-            # In a full implementation, you'd call an AI API here
-            analysis = self._deep_keyword_analysis(transcript)
-            
-        except Exception as e:
-            print(f"⚠️ AI analysis failed, using fallback: {str(e)}")
-            analysis = self._fallback_analysis(transcript)
-            
+        analysis = self._openai_analysis(transcript)    
         return analysis
     
-    def _deep_keyword_analysis(self, transcript: str) -> Dict:
-        """Enhanced keyword-based analysis with therapeutic depth."""
-        transcript_lower = transcript.lower()
+    def _openai_analysis(self, transcript: str) -> Dict:
+        """
+        Use OpenAI to analyze the conversation transcript.
         
-        analysis = {
-            "core_themes": [],
-            "emotional_patterns": [],
-            "therapeutic_insights": [],
-            "philosophical_angles": [],
-            "reframing_opportunities": [],
-            "growth_indicators": [],
-            "support_suggestions": []
-        }
+        Args:
+            transcript: The conversation transcript text
+            
+        Returns:
+            Dictionary containing analysis results
+        """
+        analysis_prompt = f"""
+Analyze this personal conversation transcript and provide therapeutic insights. Be deeply empathetic and therapeutically informed.
+
+Transcript:
+{transcript}
+
+Please provide a JSON response with these exact fields:
+- "core_themes": List of 2-3 main psychological/emotional themes
+- "emotional_patterns": Key emotional patterns you notice
+- "therapeutic_insights": 3-4 specific therapeutic observations
+- "philosophical_angles": 2-3 deeper life questions or philosophical themes
+- "reframing_opportunities": Specific ways to reframe challenges positively
+- "growth_indicators": Signs of resilience, self-awareness, or growth
+- "support_suggestions": Practical support or coping strategies
+
+Focus on being compassionate, insightful, and therapeutically informed. Return ONLY valid JSON.
+"""
+            
+        response = self.openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a compassionate therapist and philosopher analyzing conversations to provide deep insights. Always respond with valid JSON only."},
+                {"role": "user", "content": analysis_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=1000
+        )
         
-        # Core themes detection
-        if any(word in transcript_lower for word in ["stuck", "paralyzed", "fear", "doubt", "afraid"]):
-            analysis["core_themes"].append("fear and avoidance patterns")
-            analysis["therapeutic_insights"].append("Fear often masks deeper concerns about self-worth and capability")
-            analysis["reframing_opportunities"].append("Fear as information rather than instruction")
-            
-        if any(word in transcript_lower for word in ["expectations", "pressure", "perfect", "should"]):
-            analysis["core_themes"].append("perfectionism and expectations")
-            analysis["therapeutic_insights"].append("Perfectionism can be a form of self-protection against judgment")
+        analysis_text = response.choices[0].message.content.strip()
         
-        if any(word in transcript_lower for word in ["trust", "believe", "confidence", "capable"]):
-            analysis["core_themes"].append("self-trust and inner confidence")
-            analysis["growth_indicators"].append("Awareness of trust issues is the first step toward healing")
-            
-        # Emotional patterns
-        if "voice in my head" in transcript_lower or "telling me" in transcript_lower:
-            analysis["emotional_patterns"].append("inner critic and negative self-talk")
-            analysis["support_suggestions"].append("Practice mindful awareness of inner dialogue")
-            
-        # Philosophical angles
-        if any(word in transcript_lower for word in ["meaning", "purpose", "why", "worth"]):
-            analysis["philosophical_angles"].append("search for meaning and life purpose")
-            
-        if any(word in transcript_lower for word in ["journey", "process", "growing", "learning"]):
-            analysis["philosophical_angles"].append("life as continuous growth and evolution")
-            
-        # Growth indicators
-        if any(word in transcript_lower for word in ["aware", "realize", "notice", "understand"]):
-            analysis["growth_indicators"].append("Strong self-awareness and insight")
-            
-        if any(word in transcript_lower for word in ["trying", "working on", "practice"]):
-            analysis["growth_indicators"].append("Active engagement in personal development")
-            
-        # Default insights if none detected
-        if not analysis["therapeutic_insights"]:
-            analysis["therapeutic_insights"] = [
-                "The willingness to examine one's patterns shows courage and self-compassion",
-                "Growth often happens in the space between comfort and challenge"
-            ]
-            
-        if not analysis["philosophical_angles"]:
-            analysis["philosophical_angles"] = [
-                "the balance between acceptance and change",
-                "finding meaning in uncertainty and growth"
-            ]
-            
+        # Parse JSON response
+        analysis = json.loads(analysis_text)
+        
+        # Validate required fields
+        required_fields = ["core_themes", "emotional_patterns", "therapeutic_insights", 
+                            "philosophical_angles", "reframing_opportunities", "growth_indicators", "support_suggestions"]
+        
+        for field in required_fields:
+            if field not in analysis:
+                analysis[field] = []
+        
+        print("✅ OpenAI conversation analysis complete")
         return analysis
-    
-    def _fallback_analysis(self, transcript: str) -> Dict:
-        """Simple fallback analysis."""
-        return {
-            "core_themes": ["personal growth", "self-reflection"],
-            "emotional_patterns": ["mixed emotions about change"],
-            "therapeutic_insights": ["Self-awareness is a powerful tool for growth"],
-            "philosophical_angles": ["the journey of becoming"],
-            "reframing_opportunities": ["Challenges as opportunities for development"],
-            "growth_indicators": ["Willingness to examine patterns"],
-            "support_suggestions": ["Practice self-compassion"]
-        }
-    
+
     def generate_podcast_script(self, transcript: str, analysis: Dict) -> str:
         """
         Generate a dynamic, conversational podcast script with overlapping dialogue.
@@ -193,97 +162,109 @@ class AIPodcastGenerator:
         reframes = analysis.get("reframing_opportunities", [])
         growth = analysis.get("growth_indicators", [])
         
-        # Create a deeply empathetic, therapeutic script based on the actual conversation
-        script = self._create_empathetic_script(transcript, themes, insights, philosophical, reframes, growth)
-
+        # Generate AI-powered empathetic script
+        script = self._generate_ai_script(transcript, analysis)
+        
         return script.strip()
     
-    def _create_empathetic_script(self, transcript: str, themes: list, insights: list, philosophical: list, reframes: list, growth: list) -> str:
-        """Generate a deeply empathetic script that interprets the specific conversation."""
+    def _generate_ai_script(self, transcript: str, analysis: Dict) -> str:
+        """
+        Generate an AI-powered podcast script that's deeply empathetic and therapeutic.
         
-        # Analyze the specific conversation content
-        has_fear_of_success = "afraid of succeeding" in transcript.lower()
-        has_family_pressure = "family" in transcript.lower() and ("supportive" in transcript.lower() or "worried" in transcript.lower())
-        has_perfectionism = "paralyzed" in transcript.lower() or "stuck" in transcript.lower()
-        has_meaningful_work_desire = "meaningful" in transcript.lower() or "help people" in transcript.lower()
-        has_self_doubt = "voice in my head" in transcript.lower() or "not good enough" in transcript.lower()
-        has_information_consumption = "reading" in transcript.lower() and "books" in transcript.lower()
-        mentions_small_steps = "small" in transcript.lower() and ("step" in transcript.lower() or "tiny" in transcript.lower())
+        Args:
+            transcript: The original conversation transcript
+            analysis: Analysis results containing themes, insights, etc.
+            
+        Returns:
+            Generated podcast script
+        """
+        return self._create_ai_prompted_script(transcript, analysis)
+            
+    def _create_ai_prompted_script(self, transcript: str, analysis: Dict) -> str:
+        """
+        Create a script using OpenAI for natural, therapeutic podcast generation.
+        """
+        return self._openai_script_generation(transcript, analysis)
+    
+    def _load_example_scripts(self) -> str:
+        """Load example scripts from the scripts/ directory to provide context."""
+        example_scripts = []
+        script_files = ["fear_of_success_script.txt", "relationship_patterns_script.txt", "crisis_support_script.txt"]
         
-        # Load template from file
-        try:
-            with open("scripts/empathetic_template.txt", "r") as f:
-                template = f.read()
-        except FileNotFoundError:
-            print("⚠️ Template file not found, using fallback script")
-            return self._create_fallback_script()
+        for script_file in script_files:
+            try:
+                with open(f"scripts/{script_file}", 'r') as f:
+                    content = f.read()
+                    example_scripts.append(f"=== {script_file.replace('_', ' ').replace('.txt', '').title()} ===\n{content}")
+            except FileNotFoundError:
+                continue
         
-        # Create context-specific content
-        fear_of_success_insight = ('Yes, and what I find fascinating is their friend\'s insight: "You\'re not afraid of failing, you\'re afraid of succeeding." That\'s such a profound reframe.' 
-                                 if has_fear_of_success else 
-                                 'What I notice is how they\'re caught between their own dreams and external expectations.')
+        return "\n\n".join(example_scripts)
+
+    def _openai_script_generation(self, transcript: str, analysis: Dict) -> str:
+        """
+        Generate podcast script using OpenAI API with example scripts as context.
         
-        fear_success_response = ('That friend gave them such a gift with that observation. Because once you name it - "I\'m afraid of succeeding" - suddenly it becomes something you can work with rather than this mysterious force that keeps stopping you.' 
-                               if has_fear_of_success else 
-                               'And there\'s this beautiful tension they describe between wanting to create something meaningful and feeling held back by doubt.')
+        Args:
+            transcript: The original conversation transcript
+            analysis: Analysis results from analyze_conversation
+            
+        Returns:
+            Generated podcast script
+        """
+        # Load example scripts for context
+        example_scripts = self._load_example_scripts()
         
-        family_dynamics_insight = ('And the family dynamics here are so relatable. They describe their family as supportive but worried about risk-taking. That\'s such a common experience - loving people who want security for you, but whose concern can inadvertently reinforce your own fears.' 
-                                 if has_family_pressure else 
-                                 'What I love is how they\'re not just thinking about success for success\'s sake - they want to create something meaningful, something that helps people. That\'s coming from such a beautiful place.')
+        # Prepare context from analysis
+        themes = analysis.get('core_themes', [])
+        insights = analysis.get('therapeutic_insights', [])
+        philosophical = analysis.get('philosophical_angles', [])
+        reframes = analysis.get('reframing_opportunities', [])
+        growth = analysis.get('growth_indicators', [])
         
-        family_response = ('Right, it\'s like having this internal tug-of-war between "I want to make my family proud and not worry them" and "I need to honor what\'s calling to me." Both of those are valid needs.'
-                         if has_family_pressure else 
-                         'There\'s something so pure about that motivation - not money or status, but genuine desire to contribute something meaningful to the world.')
-        
-        information_consumption_insight = ('And then there\'s this pattern they\'ve identified about consuming information instead of taking action. "I feel like I\'m preparing for a test that never comes" - wow. That\'s such a perfect metaphor for how perfectionism disguises itself as productivity.'
-                                         if has_information_consumption else 
-                                         'The self-awareness they show about their own patterns is remarkable. They can see exactly what\'s happening, which is the first step toward changing it.')
-        
-        information_response = ('That line gave me chills because it\'s so accurate. We tell ourselves we need more information, more preparation, more certainty - but really, we\'re just delaying the scary moment of putting ourselves out there.'
-                              if has_information_consumption else 
-                              'And I love how they\'re already thinking about solutions - starting small, taking tiny steps. That shows such wisdom.')
-        
-        self_compassion_insight = ('What gives me so much hope about this conversation is how they\'re already talking about self-compassion and finding balance - being "disciplined but not rigid, focused but not obsessive." That shows such emotional intelligence.'
-                                 if "self-compassion" in transcript.lower() else 
-                                 'And philosophically, there\'s something beautiful about their relationship with uncertainty. They\'re learning to trust themselves and the process, even without guarantees.')
-        
-        small_steps_insight = ('And that insight about starting really small - "even if it\'s just writing down my ideas or doing some research" - that\'s not settling for less, that\'s understanding how real change happens. One tiny, manageable step at a time.'
-                             if mentions_small_steps else 
-                             'The courage it takes to even have this conversation with themselves shows they\'re already changing. Most people never get this honest about their own patterns.')
-        
-        # Fill in the template
-        script = template.format(
-            fear_of_success_insight=fear_of_success_insight,
-            fear_success_response=fear_success_response,
-            family_dynamics_insight=family_dynamics_insight,
-            family_response=family_response,
-            information_consumption_insight=information_consumption_insight,
-            information_response=information_response,
-            self_compassion_insight=self_compassion_insight,
-            small_steps_insight=small_steps_insight
+        script_prompt = f"""
+Create a warm, empathetic podcast script for "Deep Reflections" hosted by Sarah and Rachel, following the style and format of the examples below.
+
+EXAMPLE SCRIPTS (for style reference):
+{example_scripts}
+
+ORIGINAL CONVERSATION TO ANALYZE:
+{transcript}
+
+ANALYSIS INSIGHTS:
+- Core themes: {', '.join(themes) if themes else 'personal growth'}
+- Therapeutic insights: {'; '.join(insights[:2]) if insights else 'self-awareness and courage'}
+- Philosophical angles: {'; '.join(philosophical) if philosophical else 'the journey of becoming'}
+- Growth signs: {'; '.join(growth) if growth else 'vulnerability and self-reflection'}
+
+REQUIREMENTS:
+1. Use the EXACT same format markers as the examples: [INTRO - Host 1], [Host 2], [OVERLAP - Host 1], [OUTRO - Host 2], etc.
+2. Make it deeply personal and specific to THIS conversation - reference actual quotes and moments
+3. Include therapeutic reframes and philosophical insights like the examples
+4. Feel warm, conversational, and sometimes overlapping like real friends talking
+5. Sarah (Host 1) tends to be more philosophical, Rachel (Host 2) more therapeutic
+6. Address the specific struggles and growth signs from this person's sharing
+7. End with genuine encouragement and wisdom
+8. Match the natural flow and conversational style of the examples
+
+Create a script that feels like it was written by the same caring hosts who wrote the examples.
+"""
+            
+        response = self.openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a script writer for the therapeutic podcast 'Deep Reflections.' Study the example scripts carefully and create a new script that matches their warmth, insight, and conversational flow exactly. Always use the same format markers and maintain the caring, therapeutic tone."},
+                {"role": "user", "content": script_prompt}
+            ],
+            temperature=0.7,
+            max_tokens=2500
         )
         
+        script = response.choices[0].message.content.strip()
+        print("✅ OpenAI script generation complete (with example context)")
         return script
     
-    def _create_fallback_script(self) -> str:
-        """Simple fallback script if template file is missing."""
-        return """[INTRO - Host 1]
-Hey everyone, welcome back to "Deep Reflections." Today we're exploring a conversation about personal growth and self-awareness.
-
-[Host 2]
-That's right. What struck us about this conversation is the level of honesty and vulnerability shared.
-
-[Host 1]
-The person sharing here shows incredible self-awareness about their patterns and challenges.
-
-[Host 2]
-And that awareness is actually the foundation for real change and growth.
-
-[OUTRO - Host 1]
-Thanks for joining us today. Remember, you're not alone in your struggles.
-
-[Host 2]
-Until next time, be gentle with yourselves."""
+    
     
     def text_to_speech_playht(self, text: str, voice_id: str, filename: str) -> bool:
         """
@@ -1091,10 +1072,11 @@ def main():
     parser.add_argument("--sample", "-s", default="heavy_emotional_disclosure", help="Use a sample conversation (heavy_emotional_disclosure, goal_setting_accountability, light_reflective_checkin, crisis_management, long_term_patterns)")
     parser.add_argument("--script-file", help="Path to a pre-written script file (instead of transcript/sample)")
     parser.add_argument("--combine-only", action="store_true", help="Just combine existing segments/ files")
-    parser.add_argument("--api-key", default="sk_9826ff690460e4e48e6a9d0e238e172d209e1c03489353f7", help="ElevenLabs API key")
-    parser.add_argument("--playht-key", default="ak-030965aa9519486c97708d3c41c8fa39", help="Play.ht API key")
-    parser.add_argument("--playht-user", default="lo7OKbDgCQgdU4BdkR4jOnWjXc73", help="Play.ht User ID")
-    parser.add_argument("--use-playht", default=True, action="store_true", help="Force use Play.ht instead of ElevenLabs")
+    parser.add_argument("--api-key", default="", help="ElevenLabs API key")
+    parser.add_argument("--playht-key", default="", help="Play.ht API key")
+    parser.add_argument("--playht-user", default="", help="Play.ht User ID")
+    parser.add_argument("--openai-key", default="", help="OpenAI API key for script generation")
+    parser.add_argument("--use-playht", default=False, action="store_true", help="Force use Play.ht instead of ElevenLabs")
     
     args = parser.parse_args()
     
@@ -1122,8 +1104,14 @@ def main():
     playht_key = args.playht_key or os.getenv("PLAYHT_API_KEY")
     playht_user = args.playht_user or os.getenv("PLAYHT_USER_ID")
     
+    # Get OpenAI API key
+    openai_key = args.openai_key or os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        print("⚠️ OpenAI API key not provided - using fallback script generation")
+        print("   Provide with --openai-key or OPENAI_API_KEY environment variable for AI generation")
+    
     # Initialize the generator
-    generator = AIPodcastGenerator(api_key, playht_key, playht_user)
+    generator = AIPodcastGenerator(api_key, playht_key, playht_user, openai_key)
     
     # Override to use Play.ht if requested
     if args.use_playht and playht_key and playht_user:
