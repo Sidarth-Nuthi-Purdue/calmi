@@ -79,6 +79,9 @@ python ai_podcast_generator.py --transcript my_talk.txt --output my_episode.mp3
 # Use environment variable for API key
 export ELEVENLABS_API_KEY="sk_9826ff690460e4e48e6a9d0e238e172d209e1c03489353f7"
 python ai_podcast_generator.py --sample goal_setting_accountability
+
+python ai_podcast_generator.py --transcript dennis_breakup_transcript.txt --output dennis_breakup_podcast.mp3
+
 ```
 
 ## Output
